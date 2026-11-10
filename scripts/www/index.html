@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圣经知识百万富翁 - 音效增强版</title>
+    <!-- 引入 TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 引入 SheetJS 用于解析 Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: radial-gradient(circle at center, #1a237e 0%, #000051 100%);
+            min-height: 100vh;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        /* 加载遮罩 */
+        #loadingMask {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #FFF;
+            border-bottom-color: #FFD700;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 玻璃拟态效果 */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* 选项按钮样式 */
+        .option-btn {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .option-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            background: rgba(255, 215, 0, 0.2);
+            border-color: #ffd700;
+        }
+
+        .option-btn.selected {
+            background: #ffd700;
+            color: #000;
+            border-color: #ffd700;
+            font-weight: bold;
+        }
+
+        .option-btn.correct {
+            background: #4caf50 !important;
+            color: white !important;
+            border-color: #4caf50 !important;
+            animation: pulse-green 0.5s;
+        }
+
+        .option-btn.wrong {
+            background: #f44336 !important;
+            color: white !important;
+            border-color: #f44336 !important;
+            animation: shake 0.5s;
+        }
+
+        /* 奖金阶梯高亮与自适应 */
+        .prize-level {
+            transition: all 0.3s;
+            opacity: 0.6;
+            /* 默认字体大小，后续JS会根据高度动态调整 */
+            font-size: 1rem; 
+            padding: 0.5rem;
+            margin-bottom: 2px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 4px;
+        }
+        
+        .prize-level.active {
+            opacity: 1;
+            background: linear-gradient(90deg, rgba(255,215,0,0.3) 0%, transparent 100%);
+            border-left: 4px solid #ffd700;
+            transform: scale(1.02);
+            font-weight: bold;
+            color: #ffd700;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+        }
+
+        .prize-level.safe-line {
+            color: #4caf50;
+            font-weight: bold;
+        }
+
+        .prize-level.passed {
+            opacity: 0.3;
+            text-decoration: line-through;
+            font-size: 0.8em; /* 已通过的题目字体更小 */
+        }
+
+        /* 动画定义 */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ffd700; 
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="flex flex-col">
+
+    <!-- 加载遮罩 -->
+    <div id="loadingMask">
+        <span class="loader"></span>
+        <p id="loadingText">正在加载题库...</p>
+    </div>
+
+    <!-- 顶部导航 -->
+    <header class="w-full p-4 glass-panel sticky top-0 z-50 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-book-bible text-3xl text-yellow-400"></i>
+            <h1 class="text-xl md:text-2xl font-bold tracking-wider text-yellow-400">圣经百万富翁</h1>
+        </div>
+        <div class="flex gap-4">
+            <button onclick="showModal('helpModal')" class="px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 transition text-sm font-bold">
+                <i class="fas fa-question-circle mr-2"></i>规则
+            </button>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-grow container mx-auto p-4 flex flex-col lg:flex-row gap-6 relative">
+        
+        <!-- 左侧：游戏主区域 -->
+        <div class="lg:w-3/4 flex flex-col gap-6">
+            
+            <!-- 状态栏 -->
+            <div class="glass-panel rounded-xl p-4 flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <div class="text-center">
+                        <p class="text-xs text-gray-300">当前奖金</p>
+                        <!-- 增加 ID 以便 JS 操作动画 -->
+                        <p class="text-xl md:text-2xl font-bold text-yellow-400" id="currentPrizeDisplay">¥0</p>
+                    </div>
+                    <div class="h-10 w-px bg-gray-500"></div>
+                    <div class="text-center">
+                        <p class="text-xs text-gray-300">题目进度</p>
+                        <p class="text-xl font-bold"><span id="qCurrent">0</span>/<span id="qTotal">15</span></p>
+                    </div>
+                </div>
+                
+                <!-- 计时器 -->
+                <div class="relative w-16 h-16 flex items-center justify-center">
+                    <svg class="absolute w-full h-full transform -rotate-90">
+                        <circle cx="32" cy="32" r="28" stroke="rgba(255,255,255,0.1)" stroke-width="4" fill="none"/>
+                        <circle id="timerCircle" cx="32" cy="32" r="28" stroke="#ffd700" stroke-width="4" fill="none" stroke-dasharray="175" stroke-dashoffset="0" class="transition-all duration-1000 linear"/>
+                    </svg>
+                    <span id="timerText" class="text-xl font-bold">45</span>
+                </div>
+            </div>
+
+            <!-- 问题卡片 -->
+            <div id="gameArea" class="glass-panel rounded-2xl p-6 md:p-8 min-h-[400px] flex flex-col justify-center relative hidden">
+                <div class="absolute top-4 right-4 text-gray-400 text-sm" id="categoryTag">类别: 通用</div>
+                
+                <h2 id="questionText" class="text-xl md:text-3xl font-bold text-center mb-8 md:mb-10 leading-relaxed">
+                    准备开始游戏...
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="optionsGrid">
+                    <!-- 选项将通过JS动态生成 -->
+                </div>
+
+                <!-- 生命线区域 -->
+                <div class="mt-8 flex flex-wrap justify-center gap-4">
+                    <button id="btn5050" onclick="useLifeline('5050')" class="lifeline-btn group relative px-4 py-2 md:px-6 md:py-3 rounded-full bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-30 disabled:cursor-not-allowed text-sm md:text-base">
+                        <i class="fas fa-adjust mr-2"></i>去除两个错误答案
+                        <span class="absolute -top-2 -right-2 bg-red-500 text-xs rounded-full w-5 h-5 flex items-center justify-center hidden" id="badge5050">X</span>
+                    </button>
+                    <button id="btnPhone" onclick="useLifeline('phone')" class="lifeline-btn group relative px-4 py-2 md:px-6 md:py-3 rounded-full bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-30 disabled:cursor-not-allowed text-sm md:text-base">
+                        <i class="fas fa-phone mr-2"></i>电话求助
+                        <span class="absolute -top-2 -right-2 bg-red-500 text-xs rounded-full w-5 h-5 flex items-center justify-center hidden" id="badgePhone">X</span>
+                    </button>
+                    <button id="btnAudience" onclick="useLifeline('audience')" class="lifeline-btn group relative px-4 py-2 md:px-6 md:py-3 rounded-full bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-30 disabled:cursor-not-allowed text-sm md:text-base">
+                        <i class="fas fa-users mr-2"></i>观众投票
+                        <span class="absolute -top-2 -right-2 bg-red-500 text-xs rounded-full w-5 h-5 flex items-center justify-center hidden" id="badgeAudience">X</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 开始/结束 界面 -->
+            <div id="startScreen" class="glass-panel rounded-2xl p-6 md:p-10 text-center flex flex-col items-center justify-center min-h-[400px]">
+                <i class="fas fa-trophy text-6xl text-yellow-400 mb-6 animate-bounce"></i>
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">挑战圣经知识巅峰</h2>
+                <p class="text-gray-300 mb-8 max-w-lg">选择难度，导入题库或使用道具。回答所有问题，赢取百万虚拟奖金！</p>
+                
+                <!-- 难度选择 -->
+                <div class="flex flex-wrap justify-center gap-4 mb-8 w-full max-w-2xl">
+                    <button onclick="selectDifficulty('easy')" id="diffEasy" class="diff-btn flex-1 min-w-[100px] py-3 px-4 rounded-lg border-2 border-green-500 bg-green-500/20 hover:bg-green-500/40 transition text-green-400 font-bold">
+                        简单 (15题)
+                    </button>
+                    <button onclick="selectDifficulty('normal')" id="diffNormal" class="diff-btn flex-1 min-w-[100px] py-3 px-4 rounded-lg border-2 border-blue-500 bg-blue-500/20 hover:bg-blue-500/40 transition text-blue-400 font-bold ring-2 ring-blue-400">
+                        一般 (30题)
+                    </button>
+                    <button onclick="selectDifficulty('hard')" id="diffHard" class="diff-btn flex-1 min-w-[100px] py-3 px-4 rounded-lg border-2 border-red-500 bg-red-500/20 hover:bg-red-500/40 transition text-red-400 font-bold">
+                        困难 (50题)
+                    </button>
+                </div>
+
+                <!-- 上传区域 -->
+                <div class="flex flex-col sm:flex-row gap-4 w-full max-w-md" id="uploadSection">
+                    <label class="flex-1 cursor-pointer">
+                        <input type="file" id="fileInput" accept=".xlsx, .xls" class="hidden" onchange="handleFileUpload(this)">
+                        <div class="w-full py-3 px-6 rounded-lg border-2 border-dashed border-gray-400 hover:border-yellow-400 hover:bg-white/5 transition flex items-center justify-center gap-2">
+                            <i class="fas fa-file-excel text-green-400"></i>
+                            <span id="fileNameDisplay">上传 XLSX 题库</span>
+                        </div>
+                    </label>
+                    <button onclick="startGame()" class="flex-1 bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 px-6 rounded-lg transition transform hover:scale-105 shadow-lg shadow-yellow-500/20">
+                        开始答题
+                    </button>
+                </div>
+
+                <!-- 题库已加载提示 (初始隐藏) -->
+                <div id="loadedSection" class="hidden flex flex-col items-center gap-4 w-full max-w-md">
+                    <div class="bg-green-500/20 border border-green-500 text-green-400 px-4 py-2 rounded-lg flex items-center gap-2">
+                        <i class="fas fa-check-circle"></i>
+                        <span id="loadedMsg">题库已就绪</span>
+                    </div>
+                    <button onclick="startGame()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 px-6 rounded-lg transition transform hover:scale-105 shadow-lg shadow-yellow-500/20">
+                        开始新一轮挑战
+                    </button>
+                    <button onclick="resetLibrary()" class="text-sm text-gray-400 hover:text-white underline mt-2">
+                        更换题库
+                    </button>
+                </div>
+
+                <p class="mt-4 text-xs text-gray-500">支持格式: 题目 | 选项A | 选项B | 选项C | 选项D | 正确答案(1-4 或 A-D)</p>
+            </div>
+
+            <div id="endScreen" class="glass-panel rounded-2xl p-6 md:p-10 text-center hidden flex flex-col items-center justify-center min-h-[400px]">
+                <i id="endIcon" class="fas fa-medal text-6xl text-yellow-400 mb-6"></i>
+                <h2 id="endTitle" class="text-3xl md:text-4xl font-bold mb-2">游戏结束</h2>
+                <p id="endMessage" class="text-xl text-gray-300 mb-6">你最终获得了...</p>
+                
+                <div class="bg-black/30 rounded-xl p-6 w-full max-w-md mb-8">
+                    <div class="flex justify-between mb-2">
+                        <span>最终奖金:</span>
+                        <span id="finalScore" class="text-2xl font-bold text-yellow-400">¥0</span>
+                    </div>
+                    <div class="flex justify-between text-sm text-gray-400">
+                        <span>答对题数:</span>
+                        <span id="finalCorrect">0/15</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button onclick="restartGame()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg transition">
+                        再玩一次 (保留设置)
+                    </button>
+                    <button onclick="backToStart()" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg transition">
+                        返回主页
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 右侧：奖金阶梯 -->
+        <div class="lg:w-1/4 glass-panel rounded-xl p-4 h-fit sticky top-24 max-h-[80vh] overflow-y-auto flex flex-col">
+            <h3 class="text-center text-yellow-400 font-bold mb-4 border-b border-gray-600 pb-2">奖金阶梯</h3>
+            <!-- 容器增加ID以便JS计算高度 -->
+            <div class="flex flex-col-reverse gap-1 flex-grow" id="prizeLadder">
+                <!-- JS 生成阶梯 -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 模态框：规则 -->
+    <div id="helpModal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-2xl w-full m-4 border border-gray-600 relative">
+            <button onclick="closeModal('helpModal')" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+            <h2 class="text-2xl font-bold text-yellow-400 mb-4">游戏规则——福鼎召会柳弟兄著</h2>
+            <ul class="space-y-3 text-gray-300 list-disc pl-5">
+                <li><strong>简单模式</strong>：15题，安全线为第5、10题。</li>
+                <li><strong>一般模式</strong>：30题，安全线为第10、20题。</li>
+                <li><strong>困难模式</strong>：50题，安全线为第10、20、30、40题。</li>
+                <li>每道题有 <strong>4</strong> 个选项，只有一个是正确的。</li>
+                <li>你有 <strong>3</strong> 次救命机会：去除两个错误答案、电话求助、观众投票。</li>
+                <li>时间限制：每题45秒，超时视为答错。</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 模态框：观众投票结果 -->
+    <div id="audienceModal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-md w-full m-4 border border-gray-600 text-center">
+            <h3 class="text-xl font-bold mb-6">观众投票结果</h3>
+            <div class="space-y-4" id="audienceBars">
+                <!-- 动态生成条形图 -->
+            </div>
+            <button onclick="closeModal('audienceModal')" class="mt-8 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg">关闭</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 音效配置 ---
+        // 直接调用同目录下的 correct.mp3、wrong.mp3、victory.mp3 文件
+        const SOUNDS = {
+            correct: new Audio('./correct.mp3'),  // 答对音效
+            wrong: new Audio('./wrong.mp3'),      // 答错音效
+            win: new Audio('./victory.mp3'),      // 胜利音效
+            lose: new Audio('./wrong.mp3')        // 失败音效（复用答错音效）
+        };
+
+        // 预加载音效并处理错误（防止文件缺失导致报错）
+        Object.keys(SOUNDS).forEach(key => {
+            SOUNDS[key].load();
+            SOUNDS[key].addEventListener('error', () => {
+                console.warn(`Audio file ${key} not found or failed to load.`);
+            });
+        });
+
+        function playSound(type) {
+            if(SOUNDS[type]) {
+                SOUNDS[type].currentTime = 0;
+                SOUNDS[type].play().catch(e => console.log("Audio play failed (interaction needed first):", e));
+            }
+        }
+
+        // --- 游戏配置 ---
+        const DIFFICULTY_CONFIG = {
+            easy: { total: 15, safeLines: [5, 10] },
+            normal: { total: 30, safeLines: [10, 20] },
+            hard: { total: 50, safeLines: [10, 20, 30, 40] }
+        };
+
+        // 默认题库示例（当data.xlsx加载失败时使用）
+        const defaultQuestions = [
+            { q: "圣经的第一卷书是什么？", options: ["出埃及记", "创世记", "利未记", "民数记"], a: 1 },
+            { q: "谁建造了方舟？", options: ["摩西", "亚伯拉罕", "诺亚", "大卫"], a: 2 },
+            { q: "耶稣在哪个河里受洗？", options: ["尼罗河", "约旦河", "幼发拉底河", "底格里斯河"], a: 1 },
+            { q: "十诫是谁领受的？", options: ["耶稣", "保罗", "摩西", "彼得"], a: 2 },
+            { q: "圣经中最后一卷书是什么？", options: ["使徒行传", "启示录", "犹大书", "希伯来书"], a: 1 },
+            { q: "大卫王最著名的对手是谁？", options: ["扫罗", "歌利亚", "押沙龙", "所罗门"], a: 1 },
+            { q: "耶稣变水为酒的神迹发生在哪里？", options: ["迦拿", "耶利哥", "伯利恒", "拿撒勒"], a: 0 },
+            { q: "谁被狮子坑吞入却毫发无伤？", options: ["以利亚", "以利沙", "但以理", "约瑟"], a: 2 },
+            { q: "新约中第一卷书是什么？", options: ["马可福音", "路加福音", "马太福音", "约翰福音"], a: 2 },
+            { q: "保罗原名是什么？", options: ["扫罗", "西门", "雅各", "安得烈"], a: 0 },
+            { q: "哪座山是摩西领受十诫的地方？", options: ["橄榄山", "锡安山", "西奈山", "加尔各他山"], a: 2 },
+            { q: "谁出卖了耶稣？", options: ["彼得", "犹大", "多马", "腓力"], a: 1 },
+            { q: "圣经中最短的一卷书是？", options: ["约翰二书", "约翰三书", "犹大书", "腓利门书"], a: 1 },
+            { q: "启示录中提到的七个教会位于哪里？", options: ["希腊", "亚细亚", "意大利", "埃及"], a: 1 },
+            { q: "耶稣复活后第一次向谁显现？", options: ["彼得", "约翰", "抹大拉的马利亚", "多马"], a: 2 }
+        ];
+
+        // 全局变量
+        let globalQuestionPool = [];
+        let isCustomLibraryLoaded = false;
+        let currentDifficulty = 'normal'; 
+        
+        // 游戏状态
+        let gameState = {
+            questions: [],
+            currentIndex: 0,
+            score: 0,
+            lifelines: { '5050': true, 'phone': true, 'audience': true },
+            timer: null,
+            timeLeft: 45,
+            isPlaying: false,
+            prizeLadder: []
+        };
+
+        // --- 解析Excel数据的通用函数 ---
+        function parseExcelData(data) {
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+            
+            const parsedQuestions = [];
+            for(let i=1; i<jsonData.length; i++) {
+                const row = jsonData[i];
+                if(row && row.length >= 6) {
+                    let ansRaw = row[5];
+                    // 清理答案字段
+                    if (typeof ansRaw === 'string') ansRaw = ansRaw.trim();
+                    
+                    let correctIndex = -1;
+                    if (!isNaN(ansRaw)) {
+                        let num = parseInt(ansRaw);
+                        if (num >= 1 && num <= 4) correctIndex = num - 1;
+                    } else if (typeof ansRaw === 'string') {
+                        const upperAns = ansRaw.toUpperCase();
+                        if (upperAns === 'A') correctIndex = 0;
+                        else if (upperAns === 'B') correctIndex = 1;
+                        else if (upperAns === 'C') correctIndex = 2;
+                        else if (upperAns === 'D') correctIndex = 3;
+                    }
+
+                    if (correctIndex !== -1 && row[0] && row[1] && row[2] && row[3] && row[4]) {
+                        parsedQuestions.push({
+                            q: row[0],
+                            options: [row[1], row[2], row[3], row[4]],
+                            a: correctIndex
+                        });
+                    }
+                }
+            }
+            return parsedQuestions;
+        }
+
+        // --- 自动加载同目录下的data.xlsx ---
+        async function loadDefaultDataXlsx() {
+            const loadingText = document.getElementById('loadingText');
+            try {
+                loadingText.innerText = '正在加载默认题库 data.xlsx...';
+                const response = await fetch('./data.xlsx');
+                if (!response.ok) {
+                    throw new Error('data.xlsx not found');
+                }
+                const arrayBuffer = await response.arrayBuffer();
+                const data = new Uint8Array(arrayBuffer);
+                const parsedQuestions = parseExcelData(data);
+                
+                if (parsedQuestions.length > 0) {
+                    globalQuestionPool = parsedQuestions;
+                    isCustomLibraryLoaded = true;
+                    document.getElementById('uploadSection').classList.add('hidden');
+                    document.getElementById('loadedSection').classList.remove('hidden');
+                    document.getElementById('loadedMsg').innerText = `已自动加载默认题库，共 ${globalQuestionPool.length} 道题目`;
+                    console.log(`成功加载默认题库 data.xlsx，共 ${parsedQuestions.length} 道题`);
+                } else {
+                    throw new Error('data.xlsx 解析无有效题目');
+                }
+            } catch (error) {
+                console.log('未找到data.xlsx或加载失败，使用内置默认题库:', error);
+                globalQuestionPool = [...defaultQuestions];
+                isCustomLibraryLoaded = false;
+                document.getElementById('uploadSection').classList.remove('hidden');
+                document.getElementById('loadedSection').classList.add('hidden');
+            } finally {
+                // 隐藏加载遮罩
+                setTimeout(() => {
+                    document.getElementById('loadingMask').style.display = 'none';
+                }, 500);
+            }
+        }
+
+        // --- 初始化 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // 先加载默认题库
+            loadDefaultDataXlsx();
+            
+            selectDifficulty('normal');
+            
+            // 监听窗口大小变化以重新调整阶梯字体
+            window.addEventListener('resize', adjustPrizeLadderFont);
+        });
+
+        // --- 核心逻辑 ---
+
+        // 生成奖金阶梯
+        function generatePrizeLadder(totalQuestions) {
+            const ladder = [];
+            const maxPrize = 1000000;
+            const base = Math.pow(maxPrize, 1 / (totalQuestions - 1));
+            
+            for(let i=0; i<totalQuestions; i++) {
+                let prize = Math.round(Math.pow(base, i));
+                if(i === totalQuestions - 1) prize = maxPrize;
+                ladder.push(prize);
+            }
+            return ladder;
+        }
+
+        function renderPrizeLadder() {
+            const container = document.getElementById('prizeLadder');
+            container.innerHTML = '';
+            const config = DIFFICULTY_CONFIG[currentDifficulty];
+            
+            gameState.prizeLadder.forEach((prize, index) => {
+                const level = index + 1;
+                const isSafe = config.safeLines.includes(level);
+                const div = document.createElement('div');
+                div.className = `prize-level ${isSafe ? 'safe-line' : 'text-gray-300'}`;
+                div.id = `prize-${index}`;
+                div.innerHTML = `
+                    <span class="level-num">${level}</span>
+                    <span class="level-prize">¥${prize.toLocaleString()}</span>
+                `;
+                container.appendChild(div);
+            });
+            
+            // 渲染完成后调整字体大小以适应容器
+            setTimeout(adjustPrizeLadderFont, 100);
+        }
+
+        // 新增：根据容器高度动态调整奖金阶梯字体和间距
+        function adjustPrizeLadderFont() {
+            const container = document.getElementById('prizeLadder');
+            if (!container || container.children.length === 0) return;
+
+            const containerHeight = container.clientHeight;
+            const itemCount = container.children.length;
+            
+            // 计算每个项目可用的最大高度
+            const availableHeightPerItem = containerHeight / itemCount;
+            
+            // 基础字体大小和最小限制
+            let fontSize = 16; // px
+            let paddingY = 8;  // px
+            
+            // 如果空间非常拥挤，减小字体
+            if (availableHeightPerItem < 30) {
+                fontSize = 12;
+                paddingY = 2;
+            } else if (availableHeightPerItem < 40) {
+                fontSize = 14;
+                paddingY = 4;
+            } else if (availableHeightPerItem > 60) {
+                fontSize = 18;
+                paddingY = 12;
+            }
+
+            // 应用样式
+            Array.from(container.children).forEach(child => {
+                child.style.fontSize = `${fontSize}px`;
+                child.style.paddingTop = `${paddingY}px`;
+                child.style.paddingBottom = `${paddingY}px`;
+            });
+        }
+
+        function selectDifficulty(diff) {
+            currentDifficulty = diff;
+            ['easy', 'normal', 'hard'].forEach(d => {
+                const btn = document.getElementById(`diff${d.charAt(0).toUpperCase() + d.slice(1)}`);
+                if(d === diff) {
+                    btn.classList.add('ring-2', 'ring-offset-2', 'ring-offset-gray-900');
+                    if(d==='easy') btn.classList.add('ring-green-400');
+                    if(d==='normal') btn.classList.add('ring-blue-400');
+                    if(d==='hard') btn.classList.add('ring-red-400');
+                } else {
+                    btn.classList.remove('ring-2', 'ring-offset-2', 'ring-offset-gray-900', 'ring-green-400', 'ring-blue-400', 'ring-red-400');
+                }
+            });
+            
+            gameState.prizeLadder = generatePrizeLadder(DIFFICULTY_CONFIG[diff].total);
+            renderPrizeLadder();
+            document.getElementById('qTotal').innerText = DIFFICULTY_CONFIG[diff].total;
+        }
+
+        function handleFileUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            document.getElementById('fileNameDisplay').innerText = file.name;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const parsedQuestions = parseExcelData(data);
+
+                if(parsedQuestions.length > 0) {
+                    globalQuestionPool = parsedQuestions; // 更新全局题库
+                    isCustomLibraryLoaded = true;
+                    
+                    // UI 反馈：隐藏上传框，显示开始按钮
+                    document.getElementById('uploadSection').classList.add('hidden');
+                    document.getElementById('loadedSection').classList.remove('hidden');
+                    document.getElementById('loadedMsg').innerText = `已成功加载 ${globalQuestionPool.length} 道题目`;
+                } else {
+                    alert("未能解析出有效题目，请检查Excel格式。\n格式要求：题目 | 选项A | 选项B | 选项C | 选项D | 正确答案(1-4 或 A-D)");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function resetLibrary() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('uploadSection').classList.remove('hidden');
+            document.getElementById('loadedSection').classList.add('hidden');
+            document.getElementById('fileNameDisplay').innerText = "上传 XLSX 题库";
+            // 重置时尝试重新加载默认data.xlsx，失败则用内置题库
+            loadDefaultDataXlsx();
+        }
+
+        function startGame() {
+            const config = DIFFICULTY_CONFIG[currentDifficulty];
+            const totalQ = config.total;
+            
+            if(globalQuestionPool.length < totalQ) {
+                alert(`题库题目数量不足！当前需要 ${totalQ} 道，但题库仅有 ${globalQuestionPool.length} 道。\n请选择更低难度或上传包含更多题目的题库。`);
+                return;
+            }
+            
+            const shuffled = shuffleArray([...globalQuestionPool]);
+            gameState.questions = shuffled.slice(0, totalQ);
+            gameState.prizeLadder = generatePrizeLadder(totalQ);
+
+            resetGameState();
+            renderPrizeLadder();
+            
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('endScreen').classList.add('hidden');
+            document.getElementById('gameArea').classList.remove('hidden');
+            
+            loadQuestion();
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function backToStart() {
+            document.getElementById('endScreen').classList.add('hidden');
+            document.getElementById('gameArea').classList.add('hidden');
+            document.getElementById('startScreen').classList.remove('hidden');
+            
+            if (isCustomLibraryLoaded) {
+                document.getElementById('uploadSection').classList.add('hidden');
+                document.getElementById('loadedSection').classList.remove('hidden');
+            } else {
+                document.getElementById('uploadSection').classList.remove('hidden');
+                document.getElementById('loadedSection').classList.add('hidden');
+            }
+        }
+
+        function resetGameState() {
+            gameState.currentIndex = 0;
+            gameState.score = 0;
+            gameState.lifelines = { '5050': true, 'phone': true, 'audience': true };
+            gameState.isPlaying = true;
+            
+            ['5050', 'Phone', 'Audience'].forEach(id => {
+                const btn = document.getElementById(`btn${id}`);
+                if(btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-30', 'cursor-not-allowed');
+                }
+                const badge = document.getElementById(`badge${id}`);
+                if(badge) badge.classList.add('hidden');
+            });
+        }
+
+        // 新增：奖金数字跳动动画
+        function animatePrize(targetValue) {
+            const element = document.getElementById('currentPrizeDisplay');
+            const startValue = parseInt(element.innerText.replace(/[^0-9]/g, '')) || 0;
+            const duration = 1000; // 1秒动画
+            const startTime = performance.now();
+
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // 缓动函数 (easeOutQuad)
+                const easeProgress = 1 - (1 - progress) * (1 - progress);
+                
+                const currentVal = Math.floor(startValue + (targetValue - startValue) * easeProgress);
+                element.innerText = `¥${currentVal.toLocaleString()}`;
+
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                } else {
+                    element.innerText = `¥${targetValue.toLocaleString()}`;
+                }
+            }
+            requestAnimationFrame(update);
+        }
+
+        function loadQuestion() {
+            const config = DIFFICULTY_CONFIG[currentDifficulty];
+            if(gameState.currentIndex >= config.total || gameState.currentIndex >= gameState.questions.length) {
+                endGame(true);
+                return;
+            }
+
+            const qData = gameState.questions[gameState.currentIndex];
+            
+            document.getElementById('questionText').innerText = qData.q;
+            document.getElementById('qCurrent').innerText = gameState.currentIndex + 1;
+            
+            // 计算当前应显示的奖金（即上一题的奖金，如果是第1题则为0）
+            const currentPrizeVal = gameState.currentIndex > 0 ? gameState.prizeLadder[gameState.currentIndex-1] : 0;
+            
+            // 使用动画更新奖金显示
+            animatePrize(currentPrizeVal);
+            
+            // 高亮当前奖金阶梯
+            document.querySelectorAll('.prize-level').forEach(el => el.classList.remove('active'));
+            const currentPrizeEl = document.getElementById(`prize-${gameState.currentIndex}`);
+            if(currentPrizeEl) currentPrizeEl.classList.add('active');
+
+            // 生成选项
+            const optionsGrid = document.getElementById('optionsGrid');
+            optionsGrid.innerHTML = '';
+            
+            qData.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'option-btn w-full p-4 rounded-xl border border-gray-500 bg-gray-800/50 text-left text-lg font-medium hover:bg-gray-700 focus:outline-none';
+                btn.innerHTML = `<span class="text-yellow-500 font-bold mr-2">${String.fromCharCode(65+idx)}.</span> ${opt}`;
+                btn.onclick = () => selectAnswer(idx, btn);
+                btn.id = `opt-${idx}`;
+                optionsGrid.appendChild(btn);
+            });
+
+            startTimer();
+        }
+
+        function startTimer() {
+            clearInterval(gameState.timer);
+            gameState.timeLeft = 45;
+            updateTimerVisuals();
+            
+            gameState.timer = setInterval(() => {
+                gameState.timeLeft--;
+                updateTimerVisuals();
+                if(gameState.timeLeft <= 0) {
+                    clearInterval(gameState.timer);
+                    handleWrongAnswer(null);
+                }
+            }, 1000);
+        }
+
+        function updateTimerVisuals() {
+            document.getElementById('timerText').innerText = gameState.timeLeft;
+            const circle = document.getElementById('timerCircle');
+            const totalDash = 175;
+            const offset = totalDash - (gameState.timeLeft / 45) * totalDash;
+            circle.style.strokeDashoffset = offset;
+            
+            if(gameState.timeLeft < 10) {
+                circle.style.stroke = '#f44336';
+                document.getElementById('timerText').classList.add('text-red-500');
+            } else {
+                circle.style.stroke = '#ffd700';
+                document.getElementById('timerText').classList.remove('text-red-500');
+            }
+        }
+
+        let selectedOptionIndex = -1;
+
+        function selectAnswer(index, btnElement) {
+            if(!gameState.isPlaying) return;
+            
+            document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+            
+            btnElement.classList.add('selected');
+            selectedOptionIndex = index;
+            
+            const allBtns = document.querySelectorAll('.option-btn');
+            allBtns.forEach(b => {
+                if(b !== btnElement) b.disabled = true;
+                b.style.opacity = '0.5';
+            });
+            btnElement.style.opacity = '1';
+            
+            setTimeout(() => {
+                if(document.getElementById(`opt-${index}`).classList.contains('selected')) {
+                    checkAnswer(index);
+                }
+            }, 1000);
+        }
+
+        function checkAnswer(selectedIndex) {
+            clearInterval(gameState.timer);
+            const correctIndex = gameState.questions[gameState.currentIndex].a;
+            const selectedBtn = document.getElementById(`opt-${selectedIndex}`);
+            const correctBtn = document.getElementById(`opt-${correctIndex}`);
+
+            if(selectedIndex === correctIndex) {
+                // 答对音效
+                playSound('correct');
+                selectedBtn.classList.add('correct');
+                setTimeout(() => {
+                    gameState.currentIndex++;
+                    loadQuestion();
+                }, 1500);
+            } else {
+                // 答错音效
+                playSound('wrong');
+                if(selectedBtn) selectedBtn.classList.add('wrong');
+                if(correctBtn) correctBtn.classList.add('correct');
+                setTimeout(() => {
+                    handleWrongAnswer(selectedIndex);
+                }, 2000);
+            }
+        }
+
+        function handleWrongAnswer(selectedIndex) {
+            gameState.isPlaying = false;
+            
+            let finalPrize = 0;
+            const currentLevel = gameState.currentIndex + 1;
+            const config = DIFFICULTY_CONFIG[currentDifficulty];
+            
+            const passedSafeLines = config.safeLines.filter(line => line < currentLevel);
+            
+            if (passedSafeLines.length > 0) {
+                const lastSafeLevel = Math.max(...passedSafeLines);
+                finalPrize = gameState.prizeLadder[lastSafeLevel - 1];
+            } else {
+                finalPrize = 0;
+            }
+
+            showEndScreen(false, finalPrize);
+        }
+
+        function endGame(win) {
+            gameState.isPlaying = false;
+            clearInterval(gameState.timer);
+            
+            const finalPrize = win ? gameState.prizeLadder[gameState.prizeLadder.length - 1] : 0;
+            
+            // 播放结局音效
+            if(win) {
+                playSound('win');
+            } else {
+                playSound('lose');
+            }
+            
+            showEndScreen(win, finalPrize);
+        }
+
+        function showEndScreen(win, amount) {
+            document.getElementById('gameArea').classList.add('hidden');
+            document.getElementById('endScreen').classList.remove('hidden');
+            
+            const icon = document.getElementById('endIcon');
+            const title = document.getElementById('endTitle');
+            const msg = document.getElementById('endMessage');
+            
+            if(win) {
+                icon.className = "fas fa-crown text-6xl text-yellow-400 mb-6";
+                title.innerText = "恭喜！百万富翁！";
+                msg.innerText = "你完成了所有挑战，赢得了终极大奖！";
+            } else {
+                icon.className = "fas fa-hand-holding-usd text-6xl text-gray-400 mb-6";
+                title.innerText = "游戏结束";
+                msg.innerText = "很遗憾，你答错了这道题。";
+            }
+            
+            document.getElementById('finalScore').innerText = `¥${amount.toLocaleString()}`;
+            document.getElementById('finalCorrect').innerText = `${gameState.currentIndex}/${DIFFICULTY_CONFIG[currentDifficulty].total}`;
+        }
+
+        // --- 生命线功能 ---
+
+        function useLifeline(type) {
+            if(!gameState.isPlaying || !gameState.lifelines[type]) return;
+            
+            gameState.lifelines[type] = false;
+            const btnId = type === '5050' ? 'btn5050' : (type === 'phone' ? 'btnPhone' : 'btnAudience');
+            const badgeId = type === '5050' ? 'badge5050' : (type === 'phone' ? 'badgePhone' : 'badgeAudience');
+            
+            document.getElementById(btnId).disabled = true;
+            document.getElementById(btnId).classList.add('opacity-30', 'cursor-not-allowed');
+            document.getElementById(badgeId).classList.remove('hidden');
+
+            const correctIndex = gameState.questions[gameState.currentIndex].a;
+
+            if(type === '5050') {
+                let wrongIndices = [0, 1, 2, 3].filter(i => i !== correctIndex);
+                wrongIndices = shuffleArray(wrongIndices).slice(0, 2);
+                
+                wrongIndices.forEach(idx => {
+                    const btn = document.getElementById(`opt-${idx}`);
+                    if(btn) {
+                        btn.disabled = true;
+                        btn.style.visibility = 'hidden';
+                    }
+                });
+            } else if (type === 'audience') {
+                const barsContainer = document.getElementById('audienceBars');
+                barsContainer.innerHTML = '';
+                
+                let percentages = [0,0,0,0];
+                let remaining = 100;
+                
+                const correctPercent = Math.floor(Math.random() * 30) + 50;
+                percentages[correctIndex] = correctPercent;
+                remaining -= correctPercent;
+                
+                const wrongIndices = [0,1,2,3].filter(i => i !== correctIndex);
+                for(let i=0; i<3; i++) {
+                    if(i===2) {
+                        percentages[wrongIndices[i]] = remaining;
+                    } else {
+                        const p = Math.floor(Math.random() * remaining);
+                        percentages[wrongIndices[i]] = p;
+                        remaining -= p;
+                    }
+                }
+                
+                ['A','B','C','D'].forEach((label, idx) => {
+                    const row = document.createElement('div');
+                    row.className = "flex items-center gap-2";
+                    row.innerHTML = `
+                        <span class="w-4 font-bold">${label}</span>
+                        <div class="flex-1 h-4 bg-gray-700 rounded-full overflow-hidden">
+                            <div class="h-full bg-blue-500" style="width: ${percentages[idx]}%"></div>
+                        </div>
+                        <span class="w-8 text-right text-sm">${percentages[idx]}%</span>
+                    `;
+                    barsContainer.appendChild(row);
+                });
+                
+                showModal('audienceModal');
+                
+            } else if (type === 'phone') {
+                const friendSays = [
+                    "我觉得是...",
+                    "我不太确定，但可能是...",
+                    "我在圣经里读过，应该是..."
+                ];
+                const randomPhrase = friendSays[Math.floor(Math.random() * friendSays.length)];
+                const correctLabel = String.fromCharCode(65 + correctIndex);
+                
+                alert(`电话连线中...\n朋友说："${randomPhrase} ${correctLabel}"`);
+            }
+        }
+
+        // --- 工具函数 ---
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function showModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+            document.getElementById(id).classList.add('flex');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+            document.getElementById(id).classList.remove('flex');
+        }
+    </script>
+</body>
+</html>
